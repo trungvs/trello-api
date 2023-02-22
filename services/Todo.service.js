@@ -2,6 +2,8 @@ const { MYSQL_DB } = require('../mysql/mysql')
 
 module.exports = {
     createTodo,
+    getTodoById,
+    editTodo
 }
 
 function createTodo(req, res) {
@@ -30,6 +32,51 @@ function createTodo(req, res) {
                         mesage: "Thao tác thành công"
                     })
                 }
+            })
+        }
+    })
+}
+
+function getTodoById(req, res) {
+    let id = req.params.id
+
+    let sql = `SELECT * FROM todos WHERE id = ${id}`
+    MYSQL_DB.query(sql, (err, results) => {
+        if (err) {
+            res.send({
+                code: 201,
+                mesage: "Thao tác thất bại"
+            })
+        } else {
+            res.send({
+                code: 200,
+                mesage: "Thao tác thành công",
+                data: results[0]
+            })
+        }
+    })
+}
+
+function editTodo(req, res) {
+    let id = req.params.id
+    let name = req.body.name
+
+    let sql = 
+    `
+    UPDATE todos
+    SET name = "${name}"
+    WHERE id = ${id}
+    `
+    MYSQL_DB.query(sql, (err, results) => {
+        if (err) {
+            res.send({
+                code: 201,
+                mesage: "Thao tác thất bại"
+            })
+        } else {
+            res.send({
+                code: 200,
+                mesage: "Thao tác thành công",
             })
         }
     })

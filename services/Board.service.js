@@ -22,13 +22,15 @@ function getAllBoard(req, res) {
                 if (err) {
                     console.log(err)
                 } else {
+                    let listData = []
+
                     res.send({
                         code: 200,
                         mesage: "Thao tác thành công",
-                        data: {
-                            boards: boards,
-                            todos: todos
-                        }
+                        data: boards.map(board => ({
+                            ...board,
+                            lists: todos.filter(todo => todo.board_id === board.id)
+                        }))
                     })
                 }
             })
