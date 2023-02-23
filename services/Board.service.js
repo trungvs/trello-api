@@ -8,7 +8,8 @@ module.exports = {
     getAllBoard,
     createBoard,
     editBoard,
-    deleteBoard
+    deleteBoard,
+    rankBoard
 }
 
 function getAllBoard(req, res) {
@@ -110,6 +111,76 @@ function deleteBoard(req, res) {
         }
     })
 
+}
+
+function rankBoard(req, res) {
+    let id = req.params.id
+    let currentRanking = Number(req.body.currentRanking)
+    let newRanking = Number(req.body.newRanking)
+
+    if (currentRanking > newRanking) {
+        let sql = `
+        UPDATE boards
+        SET no = no + 1
+        WHERE no >= ${newRanking}
+        `
+        MYSQL_DB.query(sql, (err, results) => {
+            if (err) {
+                res.send({
+                    code: 201,
+                    mesage: "Thao tác thất bại"
+                })
+            } else {
+                let updateRankingSql = `UPDATE boards SET no = ${newRanking} WHERE id = ${id}`
+                MYSQL_DB.query(updateRankingSql, (err, results) => {
+                    if (err) {
+                        res.send({
+                            code: 201,
+                            mesage: "Thao tác thất bại"
+                        })
+                    } else {
+                        res.send({
+                            code: 200,
+                            mesage: "Thao tác thành công"
+                        })
+                    }
+                })
+            }
+        })
+    } else if (currentRanking < newRanking) {
+        let sql = `
+        UPDATE boards
+        SET no = (
+            case when no > ${newRanking} then no + 1
+            when no <= ${newRanking} then no - 1
+            end
+        )
+        `
+        MYSQL_DB.query(sql, (err, results) => {
+            console.log(sql)
+            if (err) {
+                res.send({
+                    code: 201,
+                    mesage: "Thao tác thất bại"
+                })
+            } else {
+                let updateRankingSql = `UPDATE boards SET no = ${newRanking} WHERE id = ${id}`
+                MYSQL_DB.query(updateRankingSql, (err, results) => {
+                    if (err) {
+                        res.send({
+                            code: 201,
+                            mesage: "Thao tác thất bại"
+                        })
+                    } else {
+                        res.send({
+                            code: 200,
+                            mesage: "Thao tác thành công"
+                        })
+                    }
+                })
+            }
+        })
+    }
 }
 
 
