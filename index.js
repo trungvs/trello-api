@@ -5,7 +5,7 @@ const express = require('express');
 const app = express();
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const { connectDB } = require("./mongodb/mongodb")
+const { connectDB } = require("./mongoose/mongoose")
 
 
 app.use(bodyParser.urlencoded({ extended: false }));

@@ -1,10 +1,7 @@
 const { MYSQL_DB } = require('../mysql/mysql')
-const { getDB } = require("../mongodb/mongodb")
+const { connectDB } = require("../mongoose/mongoose")
+const mongoose = require("mongoose")
 
-
-MYSQL_DB.query("SELECT * FROM boards", (err, results) => {
-    console.log("connected")
-})
 module.exports = {
     getAllBoard,
     createBoard,
@@ -13,19 +10,36 @@ module.exports = {
     rankBoard
 }
 
+const boardsSchema = new mongoose.Schema({
+    id: Number,
+    name: String,
+    no: Number
+}, {versionKey: false})
+
+const Boards = mongoose.model("boards", boardsSchema)
+
 async function getAllBoard(req, res) {
     try {
-        let data = []
-        await getDB().collection("boards").find({ }).then(data => console.log(data))
-        await getDB().collection("todos").find({ })
-        // res.send({
-        //     boards,
-        //     todos,
-        //     data
-        // })
-        // console.log(boards, todos)
+        // const results = await Boards.find({}).sort({ no: "asc"})
+        const results = await Boards.aggregate([
+            {
+                $lookup: {
+                    from: "todos",
+                    localField: "id",
+                    foreignField: "board_id",
+                    as: "lists",
+
+                }
+            },
+            {
+                $sort: {"no": -1}
+            }
+        ]).sort({ no: "asc" })
+        res.send({
+            code: 200,
+            data: results
+        })
     } catch (err) {
-        console.log(err)
         res.send({
             code: 201,
             mesage: "Thao tác thất bại"
@@ -33,44 +47,15 @@ async function getAllBoard(req, res) {
     }
 }
 
-// function createBoard(req, res) {
-//     const name = req.body.name
-
-//     let sqlLastItem = "SELECT * FROM boards ORDER BY no DESC LIMIT 1"
-
-//     MYSQL_DB.query(sqlLastItem, (err, results) => {
-//         if (err) {
-//             console.log(err)
-//         } else {
-//             let sql = `
-//             INSERT INTO boards(id, name, no) 
-//             VALUES(id,"${name}", ${results[0] ? results[0].no + 1 : 1})
-//             `
-//             MYSQL_DB.query(sql, (err, results) => {
-//                 if (err) {
-//                     res.send({
-//                         code: 201,
-//                         mesage: "Thao tác thất bại"
-//                     })
-//                 } else {
-//                     res.send({
-//                         code: 200,
-//                         mesage: "Thao tác thành công"
-//                     })
-//                 }
-//             })
-//         }
-//     })
-// }
-
 async function createBoard(req, res) {
     try {
+        const maxOrder = await Boards.find({}).sort({ no: -1}).limit(1)
         const value = {
-            _id: Date.now(),
+            id: Number(Date.now()),
             name: req.body.name,
-            order: 1
+            no: maxOrder[0]?.no + 1|| 1
         }
-        const results = await getDB().collection("boards").insertOne(value)
+        const results = await Boards.create(value)
         res.send({
             code: 200,
             data: results
@@ -83,16 +68,11 @@ async function createBoard(req, res) {
     }
 } 
 
-function editBoard(req, res) {
+async function editBoard(req, res) {
     const id = req.params.id
     const name = req.body.name
 
-    let sql = `
-    UPDATE boards
-    SET name = "${name}"
-    WHERE id = ${id}
-    `
-    MYSQL_DB.query(sql, (err, results) => {
+    Boards.findOneAndUpdate({id: id}, {name: name}, (err, results) => {
         if (err) {
             res.send({
                 code: 201,
@@ -107,11 +87,10 @@ function editBoard(req, res) {
     })
 }
 
-function deleteBoard(req, res) {
+async function deleteBoard(req, res) {
     const id = req.params.id
-    let sql = `DELETE FROM boards WHERE id = ${id}`
 
-    MYSQL_DB.query(sql, (err, results) => {
+    Boards.deleteOne({id: id}, (err, results) => {
         if (err) {
             res.send({
                 code: 201,
@@ -124,76 +103,54 @@ function deleteBoard(req, res) {
             })
         }
     })
-
 }
 
-function rankBoard(req, res) {
+async function rankBoard(req, res) {
     let id = req.params.id
     let currentRanking = Number(req.body.currentRanking)
     let newRanking = Number(req.body.newRanking)
 
     if (currentRanking > newRanking) {
-        let sql = `
-        UPDATE boards
-        SET no = no + 1
-        WHERE no >= ${newRanking}
-        `
-        MYSQL_DB.query(sql, (err, results) => {
-            if (err) {
-                res.send({
-                    code: 201,
-                    mesage: "Thao tác thất bại"
-                })
-            } else {
-                let updateRankingSql = `UPDATE boards SET no = ${newRanking} WHERE id = ${id}`
-                MYSQL_DB.query(updateRankingSql, (err, results) => {
-                    if (err) {
-                        res.send({
-                            code: 201,
-                            mesage: "Thao tác thất bại"
-                        })
-                    } else {
-                        res.send({
-                            code: 200,
-                            mesage: "Thao tác thành công"
-                        })
-                    }
-                })
-            }
-        })
+        let updateAllOrder = await Boards.updateMany({ no: {$gte: newRanking} }, {$inc: {no:1}})
+        let updateSelected = await Boards.findOneAndUpdate({ id: id }, { no: newRanking })
+        if (updateAllOrder && updateSelected) {
+            res.send({
+                code: 200,
+                mesage: "Thao tác thành công"
+            })
+        } else {
+            res.send({
+                code: 201,
+                mesage: "Thao tác thất bại"
+            })
+        }
     } else if (currentRanking < newRanking) {
-        let sql = `
-        UPDATE boards
-        SET no = (
-            case when no > ${newRanking} then no + 1
-            when no <= ${newRanking} then no - 1
-            end
-        )
-        `
-        MYSQL_DB.query(sql, (err, results) => {
-            console.log(sql)
-            if (err) {
-                res.send({
-                    code: 201,
-                    mesage: "Thao tác thất bại"
-                })
-            } else {
-                let updateRankingSql = `UPDATE boards SET no = ${newRanking} WHERE id = ${id}`
-                MYSQL_DB.query(updateRankingSql, (err, results) => {
-                    if (err) {
-                        res.send({
-                            code: 201,
-                            mesage: "Thao tác thất bại"
-                        })
-                    } else {
-                        res.send({
-                            code: 200,
-                            mesage: "Thao tác thành công"
-                        })
-                    }
-                })
+        let updateAllOrder = await Boards.bulkWrite([
+            {
+                "updateMany": {
+                    "filter": { no: {$gt: newRanking}},
+                    "update" : { $inc: {no: 1}}
+                }
+            },
+            {
+                "updateMany": {
+                    "filter": { no: {$lte: newRanking}},
+                    "update" : { $inc: {no: -1}}
+                }
             }
-        })
+        ])
+        let updateSelected = await Boards.findOneAndUpdate({ id: id }, { no: newRanking })
+        if (updateAllOrder && updateSelected) {
+            res.send({
+                code: 200,
+                mesage: "Thao tác thành công"
+            })
+        } else {
+            res.send({
+                code: 201,
+                mesage: "Thao tác thất bại"
+            })
+        }
     }
 }
 
