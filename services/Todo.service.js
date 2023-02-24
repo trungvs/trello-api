@@ -1,4 +1,6 @@
 const { MYSQL_DB } = require('../mysql/mysql')
+const mongoose = require("mongoose")
+
 
 module.exports = {
     createTodo,
@@ -8,32 +10,36 @@ module.exports = {
     rankTodo
 }
 
-function createTodo(req, res) {
+const TodoScheme = new mongoose.Schema({
+    id: Number,
+    name: String,
+    no: Number,
+    board_id: Number
+}, {versionKey: false})
+
+const Todos = mongoose.model("todos", TodoScheme)
+
+async function createTodo(req, res) {
     const name = req.body.name
     const board_id = req.body.board_id
 
-    let sqlLastItem = `SELECT * FROM todos WHERE board_id = ${board_id} ORDER BY no DESC LIMIT 1`
-
-    MYSQL_DB.query(sqlLastItem, (err, results) => {
+    const maxOrder = await Todos.find({ board_id: board_id}).sort({ no: -1}).limit(1)
+    const value = {
+        id: Number(Date.now()),
+        name: name,
+        board_id: board_id,
+        no: maxOrder[0]?.no + 1 || 1
+    }
+    Todos.create(value, (err, results) => {
         if (err) {
-            console.log(err)
+            res.send({
+                code: 201,
+                mesage: "Thao tác thất bại"
+            })
         } else {
-            let sql = `
-            INSERT INTO todos (id, name, no, board_id) 
-            VALUES (id,"${name}", ${results[0] ? results[0].no + 1 : 1}, ${board_id})
-            `
-            MYSQL_DB.query(sql, (err, results) => {
-                if (err) {
-                    res.send({
-                        code: 201,
-                        mesage: "Thao tác thất bại"
-                    })
-                } else {
-                    res.send({
-                        code: 200,
-                        mesage: "Thao tác thành công"
-                    })
-                }
+            res.send({
+                code: 200,
+                mesage: "Thao tác thành công"
             })
         }
     })
@@ -59,17 +65,11 @@ function getTodoById(req, res) {
     })
 }
 
-function editTodo(req, res) {
+async function editTodo(req, res) {
     let id = req.params.id
     let name = req.body.name
 
-    let sql = 
-    `
-    UPDATE todos
-    SET name = "${name}"
-    WHERE id = ${id}
-    `
-    MYSQL_DB.query(sql, (err, results) => {
+    Todos.findOneAndUpdate({id: id}, {name: name}, (err, results) => {
         if (err) {
             res.send({
                 code: 201,
@@ -78,7 +78,7 @@ function editTodo(req, res) {
         } else {
             res.send({
                 code: 200,
-                mesage: "Thao tác thành công",
+                mesage: "Thao tác thành công"
             })
         }
     })
@@ -86,9 +86,8 @@ function editTodo(req, res) {
 
 function deleteTodo(req, res) {
     let id = req.params.id
-    let sql = `DELETE FROM todos WHERE id = ${id}`
 
-    MYSQL_DB.query(sql, (err, results) => {
+    Todos.deleteOne({id: id}, (err, results) => {
         if (err) {
             res.send({
                 code: 201,
@@ -97,111 +96,64 @@ function deleteTodo(req, res) {
         } else {
             res.send({
                 code: 200,
-                mesage: "Thao tác thành công",
+                mesage: "Thao tác thành công"
             })
         }
     })
 }
 
-function rankTodo(req, res) {
+async function rankTodo(req, res) {
     let id = req.params.id
     let board_id = Number(req.body.board_id)
     let currentRanking = Number(req.body.currentRanking)
     let newRanking = Number(req.body.newRanking)
 
-    let sql = `
-    UPDATE todos
-    SET no = no + 1
-    WHERE no >= ${newRanking} AND board_id = ${board_id}
-    `
-    MYSQL_DB.query(sql, (err, results) => {
-        if (err) {
-            res.send({
-                code: 201,
-                mesage: "Thao tác thất bại"
-            })
-        } else {
-            let updateRankingSql = `UPDATE todos SET no = ${newRanking}, board_id = ${board_id} WHERE id = ${id}`
-            MYSQL_DB.query(updateRankingSql, (err, results) => {
-                if (err) {
-                    res.send({
-                        code: 201,
-                        mesage: "Thao tác thất bại"
-                    })
-                } else {
-                    res.send({
-                        code: 200,
-                        mesage: "Thao tác thành công"
-                    })
+    console.log(req.body)
+
+    const selectedItem = await Todos.findOne({id: id})
+
+    if (selectedItem.board_id == board_id) {
+        if (currentRanking > newRanking) {
+            let updateAllOrder = Todos.updateMany({board_id: board_id, no: {$gte: newRanking}}, {$inc: {no:1}})
+            let updateSelected = Todos.findOneAndUpdate({id: id}, {no: newRanking})
+            if (updateAllOrder && updateSelected) {
+                res.send({
+                    code: 200,
+                    mesage: "Thao tác thành công"
+                })
+            } else {
+                res.send({
+                    code: 201,
+                    mesage: "Thao tác thất bại"
+                })
+            }
+        } else if (currentRanking < newRanking) {
+            let updateAllOrder = await Todos.bulkWrite([
+                {
+                    "updateMany": {
+                        "filter": { no: {$gt: newRanking}, board_id: board_id},
+                        "update" : { $inc: {no: 1}}
+                    }
+                },
+                {
+                    "updateMany": {
+                        "filter": { no: {$lte: newRanking}, board_id: board_id},
+                        "update" : { $inc: {no: -1}}
+                    }
                 }
-            })
+            ])
+            let updateSelected = await Todos.findOneAndUpdate({ id: id }, { no: newRanking })
+            if (updateAllOrder && updateSelected) {
+                res.send({
+                    code: 200,
+                    mesage: "Thao tác thành công"
+                })
+            } else {
+                res.send({
+                    code: 201,
+                    mesage: "Thao tác thất bại"
+                })
+            }
         }
-    })
-
-    // if (currentRanking > newRanking) {
-    //     let sql = `
-    //     UPDATE todos
-    //     SET no = no + 1
-    //     WHERE no >= ${newRanking} AND board_id = ${board_id}
-    //     `
-    //     MYSQL_DB.query(sql, (err, results) => {
-    //         if (err) {
-    //             res.send({
-    //                 code: 201,
-    //                 mesage: "Thao tác thất bại"
-    //             })
-    //         } else {
-    //             let updateRankingSql = `UPDATE todos SET no = ${newRanking}, board_id = ${board_id} WHERE id = ${id}`
-    //             MYSQL_DB.query(updateRankingSql, (err, results) => {
-    //                 if (err) {
-    //                     res.send({
-    //                         code: 201,
-    //                         mesage: "Thao tác thất bại"
-    //                     })
-    //                 } else {
-    //                     res.send({
-    //                         code: 200,
-    //                         mesage: "Thao tác thành công"
-    //                     })
-    //                 }
-    //             })
-    //         }
-    //     })
-    // } else if (currentRanking < newRanking) {
-    //     let sql = `
-    //     UPDATE todos
-    //     SET no = (
-    //         case when no > ${newRanking} then no + 1
-    //         when no <= ${newRanking} then no - 1
-    //         end
-    //     )
-    //     WHERE board_id = ${board_id}
-    //     `
-    //     MYSQL_DB.query(sql, (err, results) => {
-    //         console.log(sql)
-    //         if (err) {
-    //             res.send({
-    //                 code: 201,
-    //                 mesage: "Thao tác thất bại"
-    //             })
-    //         } else {
-    //             let updateRankingSql = `UPDATE todos SET no = ${newRanking}, board_id = ${board_id} WHERE id = ${id}`
-    //             MYSQL_DB.query(updateRankingSql, (err, results) => {
-    //                 if (err) {
-    //                     res.send({
-    //                         code: 201,
-    //                         mesage: "Thao tác thất bại"
-    //                     })
-    //                 } else {
-    //                     res.send({
-    //                         code: 200,
-    //                         mesage: "Thao tác thành công"
-    //                     })
-    //                 }
-    //             })
-    //         }
-    //     })
-    // }
-
-
+    }
 }
