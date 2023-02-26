@@ -1,10 +1,8 @@
-const { MYSQL_DB } = require('../mysql/mysql')
 const mongoose = require("mongoose")
 
 
 module.exports = {
     createTodo,
-    getTodoById,
     editTodo,
     deleteTodo,
     rankTodo
@@ -40,26 +38,6 @@ async function createTodo(req, res) {
             res.send({
                 code: 200,
                 mesage: "Thao tác thành công"
-            })
-        }
-    })
-}
-
-function getTodoById(req, res) {
-    let id = req.params.id
-
-    let sql = `SELECT * FROM todos WHERE id = ${id}`
-    MYSQL_DB.query(sql, (err, results) => {
-        if (err) {
-            res.send({
-                code: 201,
-                mesage: "Thao tác thất bại"
-            })
-        } else {
-            res.send({
-                code: 200,
-                mesage: "Thao tác thành công",
-                data: results[0]
             })
         }
     })
@@ -103,19 +81,17 @@ function deleteTodo(req, res) {
 }
 
 async function rankTodo(req, res) {
-    let id = req.params.id
+    let id = Number(req.params.id)
     let board_id = Number(req.body.board_id)
     let currentRanking = Number(req.body.currentRanking)
     let newRanking = Number(req.body.newRanking)
 
-    console.log(req.body)
-
     const selectedItem = await Todos.findOne({id: id})
 
-    if (selectedItem.board_id == board_id) {
+    if (selectedItem.board_id === board_id) {
         if (currentRanking > newRanking) {
-            let updateAllOrder = Todos.updateMany({board_id: board_id, no: {$gte: newRanking}}, {$inc: {no:1}})
-            let updateSelected = Todos.findOneAndUpdate({id: id}, {no: newRanking})
+            let updateAllOrder = await Todos.updateMany({board_id: board_id, no: {$gte: newRanking}}, {$inc: {no:1}})
+            let updateSelected = await Todos.findOneAndUpdate({id: id}, {no: newRanking})
             if (updateAllOrder && updateSelected) {
                 res.send({
                     code: 200,
@@ -155,5 +131,19 @@ async function rankTodo(req, res) {
                 })
             }
         }
+    } else {
+        let updateAllOrder = await Todos.updateMany({board_id: board_id, no: {$gte: newRanking}}, {$inc: {no:1}})
+        let updateSelected = await Todos.findOneAndUpdate({id: id}, {no: newRanking, board_id: board_id})
+            if (updateSelected) {
+                res.send({
+                    code: 200,
+                    mesage: "Thao tác thành công"
+                })
+            } else {
+                res.send({
+                    code: 201,
+                    mesage: "Thao tác thất bại"
+                })
+            }
     }
 }

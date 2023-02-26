@@ -28,11 +28,10 @@ async function getAllBoard(req, res) {
                     localField: "id",
                     foreignField: "board_id",
                     as: "lists",
-
                 }
             },
             {
-                $sort: {"no": -1}
+                $sort: {"no": 1}
             }
         ]).sort({ no: "asc" })
         res.send({
